@@ -9,7 +9,7 @@ LABELS = dataset.LABELS
 def preprocess_NIHChest(path_to_dir):
     all_labels = ["Atelectasis", "Consolidation", "Infiltration", "Pneumothorax", "Edema", "Emphysema",
                        "Fibrosis", "Effusion", "Pneumonia", "Pleural_thickening", "Cardiomegaly", "Nodule Mass",
-                       "Hernia", "No findings"]
+                       "Hernia", "No Finding"]
 
     data = pd.read_csv(path_to_dir + "/" + "Data_Entry_2017.csv",
                             usecols=["Image Index", "Finding Labels", "Patient ID"], index_col=None)
@@ -69,10 +69,13 @@ def preprocess_CheXpert(path_to_dir):
     data = data.apply(lambda x: x.replace(
         {"CheXpert-v1.0-small/": ""}, regex=True
     ))
-    data = data.rename(columns={"No Finding": "No findings", "Pleural Effusion": "Effusion"})
+    data = data.rename(columns={"Pleural Effusion": "Effusion"})
 
     data = data[data.columns[data.columns.isin(["Path"] + LABELS)]]
-    data = data.replace([-1], 0)
+    data = data.replace([-1], 0]
+
+    data = data[['Path', 'Atelectasis', 'Consolidation', 'Pneumothorax', 'Edema', 'Effusion',
+                 'Pneumonia', 'Cardiomegaly', 'No Finding']]
 
     data['target_vector'] = data.apply(lambda target: [target[LABELS].values.astype(int)], 1).map(
         lambda target: target[0])
@@ -101,5 +104,5 @@ def preprocess_CheXpert(path_to_dir):
 
 
 if __name__ == "__main__":
-    preprocess_NIHChest(path_to_dir="/Volumes/Temp/NIH Chest Xray")
+    #preprocess_NIHChest(path_to_dir="/Volumes/Temp/NIH Chest Xray")
     preprocess_CheXpert(path_to_dir="/Volumes/Temp/CheXpert")
