@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupShuffleSplit
+import dataset
 
-LABELS = ["Atelectasis", "Consolidation", "Pneumothorax", "Edema", "Effusion", "Pneumonia", "Cardiomegaly",
-          "No findings"]
+LABELS = dataset.LABELS
 
 
 def preprocess_NIHChest(path_to_dir):
@@ -38,6 +38,8 @@ def preprocess_NIHChest(path_to_dir):
     data['target_vector'] = data.apply(lambda target: [target[LABELS].values], 1).map(
         lambda target: target[0])
 
+    # print(len(pd.unique(data['Patient ID'])))
+
     # data.to_pickle(path_to_dir + "/data.pkl")
 
     gs = GroupShuffleSplit(n_splits=1, test_size=.2, random_state=0)
@@ -65,7 +67,7 @@ def preprocess_CheXpert(path_to_dir):
     data_val = pd.read_csv(path_to_dir + "/" + "valid.csv", usecols=["Path"] + all_labels, index_col=None)
     data = pd.concat([data_train, data_val]).fillna(0)
     data = data.apply(lambda x: x.replace(
-        {"CheXpert-v1.0-small/": "", "train/": "", "valid/": ""}, regex=True
+        {"CheXpert-v1.0-small/": ""}, regex=True
     ))
     data = data.rename(columns={"No Finding": "No findings", "Pleural Effusion": "Effusion"})
 
@@ -79,11 +81,11 @@ def preprocess_CheXpert(path_to_dir):
     data = data.loc[data['num_labels'] != 0]
     data = data.drop("num_labels", axis=1)
 
-    data["Patient ID"] = [row.split("/")[0].split("patient")[-1] for row in data["Path"].values]
+    data["Patient ID"] = [row.split("/")[1].split("patient")[-1] for row in data["Path"].values]
+    # print(len(pd.unique(data['Patient ID'])))
 
     gs = GroupShuffleSplit(n_splits=1, test_size=.2, random_state=0)
     train_idx, test_idx = next(gs.split(data['Path'], data['target_vector'], groups=data['Patient ID']))
-
     test_df = data.iloc[test_idx]
     train_df = data.iloc[train_idx]
 
@@ -100,4 +102,4 @@ def preprocess_CheXpert(path_to_dir):
 
 if __name__ == "__main__":
     preprocess_NIHChest(path_to_dir="/Volumes/Temp/NIH Chest Xray")
-    # preprocess_CheXpert(path_to_dir="/Volumes/Temp/CheXpert")
+    preprocess_CheXpert(path_to_dir="/Volumes/Temp/CheXpert")
