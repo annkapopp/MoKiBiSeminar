@@ -14,29 +14,21 @@ def preprocess_NIHChest(path_to_dir):
     data = pd.read_csv(path_to_dir + "/" + "Data_Entry_2017.csv",
                             usecols=["Image Index", "Finding Labels", "Patient ID"], index_col=None)
 
-    folder_num = np.zeros(len(data))
-    folder_num[0:4999] = 1
-    folder_num[5000:15000] = 2
-    folder_num[15000:25000] = 3
-    folder_num[25000:35000] = 4
-    folder_num[35000:45000] = 5
-    folder_num[45000:55000] = 6
-    folder_num[55000:65000] = 7
-    folder_num[65000:75000] = 8
-    folder_num[75000:85000] = 9
-    folder_num[85000:95000] = 10
-    folder_num[95000:105000] = 11
-    folder_num[105000:] = 12
-    data['folder_num'] = list(folder_num.astype(int))
-
     data = data[data["Finding Labels"].isin(LABELS)].reset_index()
 
     for label in LABELS:
         data[label] = data["Finding Labels"].map(
             lambda result: 1 if label in result else 0)
 
-    data['target_vector'] = data.apply(lambda target: [target[LABELS].values], 1).map(
+    data['one_hot'] = data.apply(lambda target: [target[LABELS].values], 1).map(
         lambda target: target[0])
+
+    target_vectors = np.stack(data['one_hot'].values)
+    target_vectors[:, -1] = 0
+    data['target_vector'] = target_vectors.tolist()
+
+
+
 
     # print(len(pd.unique(data['Patient ID'])))
 
@@ -72,7 +64,8 @@ def preprocess_CheXpert(path_to_dir):
     data = data.rename(columns={"Pleural Effusion": "Effusion"})
 
     data = data[data.columns[data.columns.isin(["Path"] + LABELS)]]
-    data = data.replace([-1], 0]
+    data = data.replace([-1], 0)
+   
 
     data = data[['Path', 'Atelectasis', 'Consolidation', 'Pneumothorax', 'Edema', 'Effusion',
                  'Pneumonia', 'Cardiomegaly', 'No Finding']]
@@ -104,5 +97,5 @@ def preprocess_CheXpert(path_to_dir):
 
 
 if __name__ == "__main__":
-    #preprocess_NIHChest(path_to_dir="/Volumes/Temp/NIH Chest Xray")
-    preprocess_CheXpert(path_to_dir="/Volumes/Temp/CheXpert")
+    preprocess_NIHChest(path_to_dir="E:\\NIH Chest Xray")
+    # preprocess_CheXpert(path_to_dir="E:\\CheXpert")

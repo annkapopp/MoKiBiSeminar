@@ -10,7 +10,7 @@ import pandas as pd
 
 
 LABELS = ["Atelectasis", "Consolidation", "Pneumothorax", "Edema", "Effusion", "Pneumonia", "Cardiomegaly",
-          "No findings"]
+          "No Finding"]
 
 
 class NIHChestXRayDataset(Dataset):
@@ -22,22 +22,22 @@ class NIHChestXRayDataset(Dataset):
 
     def __getitem__(self, index):
         image_data = self.data.iloc[index]
-        path = os.path.join(self.path_to_dir, "images_{0:0=3d}".format(image_data["folder_num"]), "images",
-                            image_data["Image Index"])
-        image = torch.from_numpy(cv2.imread(self.data, cv2.IMREAD_GRAYSCALE)).unsqueeze(0)
+        path = os.path.join(self.path_to_dir, "images", image_data["Image Index"])
+        # print(path)
+        image = torch.from_numpy(cv2.imread(path, cv2.IMREAD_GRAYSCALE)).unsqueeze(0)
 
         if self.mode == "train":
             # augmentation
-            image = TF.resize(image, [512, 512])
+            image = TF.resize(image, [256, 256], antialias=True)
             image = transforms.RandomHorizontalFlip(0.5)(image)
             image = TF.equalize(image)
-            image = TF.adjust_gamma(image, np.random.rand() - 1)
+            image = TF.adjust_gamma(image, np.random.rand() + 0.5)
 
         image = (image - torch.min(image)) / (torch.max(image) - torch.min(image))
 
         image_name = os.path.basename(path)
-        one_hot = torch.from_numpy(self.data[self.data['Image Index'].str.contains(image_name)]
-                                   ['target_vector'].values)
+        one_hot = torch.from_numpy(np.asarray(self.data[self.data['Image Index'].str.contains(image_name)]
+                                              ['target_vector'].values[0]).astype(int))
         label = LABELS[np.argmax(one_hot)]
 
         return image, label, one_hot, image_name
@@ -59,10 +59,10 @@ class CheXpertDataset(Dataset):
 
         if self.mode == "train":
             # augmentation
-            image = TF.resize(image, [512, 512])
+            image = TF.resize(image, [512, 512], antialias=True)
             image = transforms.RandomHorizontalFlip(0.5)(image)
             image = TF.equalize(image)
-            image = TF.adjust_gamma(image, np.random.rand() - 1)
+            image = TF.adjust_gamma(image, np.random.rand() + 0.5)
 
         image = (image - torch.min(image)) / (torch.max(image) - torch.min(image))
 
@@ -78,8 +78,7 @@ class CheXpertDataset(Dataset):
 
 
 if __name__ == "__main__":
-    dataset_train = NIHChestXRayDataset(path_to_dir="/Volumes/Temp/NIH Chest Xray", mode="train")
-    dataset_test = NIHChestXRayDataset(path_to_dir="/Volumes/Temp/NIH Chest Xray", mode="test")
-
-    print(dataset_train.__len__(), dataset_test.__len__())
+    dataset_train = NIHChestXRayDataset(path_to_dir="E:\\NIH Chest Xray", mode="train")
+    dataset_test = NIHChestXRayDataset(path_to_dir="E:\\NIH Chest Xray", mode="test")
+    image = dataset_train.__getitem__(0)
 
