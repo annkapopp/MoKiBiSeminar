@@ -24,11 +24,7 @@ def preprocess_NIHChest(path_to_dir):
         lambda target: target[0])
 
     target_vectors = np.stack(data['one_hot'].values)
-    target_vectors[:, -1] = 0
     data['target_vector'] = target_vectors.tolist()
-
-
-
 
     # print(len(pd.unique(data['Patient ID'])))
 
@@ -50,7 +46,7 @@ def preprocess_NIHChest(path_to_dir):
     test_df.to_pickle(path_to_dir + "/test_data.pkl")
 
 
-def preprocess_CheXpert(path_to_dir):
+def preprocess_CheXpert(path_to_dir, crop_size):
     all_labels = ["No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity", "Lung Lesion",
                     "Edema", "Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax", "Pleural Effusion",
                     "Pleural Other", "Fracture", "Support Devices"]
@@ -70,7 +66,7 @@ def preprocess_CheXpert(path_to_dir):
     data = data[['Path', 'Atelectasis', 'Consolidation', 'Pneumothorax', 'Edema', 'Effusion',
                  'Pneumonia', 'Cardiomegaly', 'No Finding']]
 
-    data['target_vector'] = data.apply(lambda target: [target[LABELS].values.astype(int)], 1).map(
+    data['one_hot'] = data.apply(lambda target: [target[LABELS].values.astype(int)], 1).map(
         lambda target: target[0])
 
     data['num_labels'] = data.sum(axis=1, numeric_only=True)
@@ -78,7 +74,24 @@ def preprocess_CheXpert(path_to_dir):
     data = data.drop("num_labels", axis=1)
 
     data["Patient ID"] = [row.split("/")[1].split("patient")[-1] for row in data["Path"].values]
+
+    data = data.reset_index(drop=True)
     # print(len(pd.unique(data['Patient ID'])))
+
+    label_percentage = np.stack(data['one_hot'].values).sum(axis=0).astype(float) / len(data)
+    new_data = pd.DataFrame()
+    for label, p in zip(LABELS, label_percentage):
+        label_data = data[label]
+        n_new = int(crop_size * p)
+        print(p, n_new)
+        indices = label_data.index.values[:n_new]
+        new_data = new_data._append(data.iloc[indices])
+
+    data = new_data
+    print(len(data))
+
+    target_vectors = np.stack(data['one_hot'].values)
+    data['target_vector'] = target_vectors.tolist()
 
     gs = GroupShuffleSplit(n_splits=1, test_size=.2, random_state=0)
     train_idx, test_idx = next(gs.split(data['Path'], data['target_vector'], groups=data['Patient ID']))
@@ -97,5 +110,5 @@ def preprocess_CheXpert(path_to_dir):
 
 
 if __name__ == "__main__":
-    preprocess_NIHChest(path_to_dir="E:\\NIH Chest Xray")
-    # preprocess_CheXpert(path_to_dir="E:\\CheXpert")
+    #preprocess_NIHChest(path_to_dir="E:\\NIH Chest Xray")
+    preprocess_CheXpert(path_to_dir="E:\\CheXpert", crop_size=112120)
