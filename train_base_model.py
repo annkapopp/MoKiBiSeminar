@@ -1,13 +1,16 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 from torch import nn, optim
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 import pickle as pkl
+import os
 
 from base_models import ResNet18, DenseNet121
 import dataset
-from evaluation_metrics import accuracy
+from evaluation import accuracy_score
 import utils
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -43,7 +46,8 @@ def train(model, model_name, num_epochs, train_dataloader, val_dataloader, crite
 
             running_loss += loss.item()
 
-            mean_accuracy, _ = accuracy(target, output, class_counts=train_dataloader.dataset.__label_counts__().to(DEVICE))
+            mean_accuracy, _ = accuracy_score(target, output, class_counts=train_dataloader.dataset
+                                              .__target_label_counts__().to(DEVICE))
             running_accuracy += mean_accuracy.detach().cpu().numpy()
             optimizer.step()
 
@@ -77,7 +81,8 @@ def train(model, model_name, num_epochs, train_dataloader, val_dataloader, crite
 
                 running_loss += loss.item()
 
-                mean_accuracy, _ = accuracy(target, output, class_counts=train_dataloader.dataset.__label_counts__().to(DEVICE))
+                mean_accuracy, _ = accuracy_score(target, output, class_counts=train_dataloader.dataset
+                                                  .__target_label_counts__().to(DEVICE))
                 running_accuracy += mean_accuracy.detach().cpu().numpy()
 
             running_loss /= (len(val_dataloader) * dataloader_val.batch_size)
@@ -102,15 +107,17 @@ def train(model, model_name, num_epochs, train_dataloader, val_dataloader, crite
 
 
 if __name__ == "__main__":
-    print("device: ", DEVICE)
+    print("device: ", DEVICE, ", gpu no.:", os.environ["CUDA_VISIBLE_DEVICES"])
 
-    dataset_train = dataset.NIHChestXRayDataset("NIH Chest Xray", mode="train")
-    dataset_val = dataset.NIHChestXRayDataset("NIH Chest Xray", mode="val")
+    # dataset_train = dataset.NIHChestXRayDataset("NIH Chest Xray", mode="train")
+    # dataset_val = dataset.NIHChestXRayDataset("NIH Chest Xray", mode="val")
+    dataset_train = dataset.CheXpertDataset("CheXpert", mode="train")
+    dataset_val = dataset.CheXpertDataset("CheXpert", mode="val")
 
     dataloader_train = DataLoader(dataset_train, batch_size=32, shuffle=True, pin_memory=True, num_workers=8)
     dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=False, pin_memory=True, num_workers=8)
 
-    label_counts = dataset_train.__label_counts__()
+    label_counts = dataset_train.__target_label_counts__()
     weights = np.sqrt(1 / label_counts)
     weights /= weights.mean()
 
@@ -122,5 +129,5 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
-    train(model, "nih_chest_densenet_pretrained_new", 10, dataloader_train, dataloader_val,
+    train(model, "chexpert_densenet_pretrained", 10, dataloader_train, dataloader_val,
           criterion, optimizer, scheduler)
