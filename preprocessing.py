@@ -1,105 +1,157 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold
 import dataset
 
-LABELS = dataset.LABELS
+LABELS_USED = dataset.LABELS_USED
+ALL_LABELS = dataset.ALL_LABELS
 
 
 def preprocess_NIHChest(path_to_dir):
-    all_labels = ["Atelectasis", "Consolidation", "Infiltration", "Pneumothorax", "Edema", "Emphysema",
-                       "Fibrosis", "Effusion", "Pneumonia", "Pleural_thickening", "Cardiomegaly", "Nodule Mass",
-                       "Hernia", "No Finding"]
+    all_nih_labels = ["Atelectasis", "Consolidation", "Infiltration", "Pneumothorax", "Edema", "Emphysema",
+                  "Fibrosis", "Effusion", "Pneumonia", "Pleural_thickening", "Cardiomegaly", "Nodule Mass",
+                  "Hernia", "No Finding"]
 
+    # load only relevant columns of csv
     data = pd.read_csv(path_to_dir + "/" + "Data_Entry_2017.csv",
-                            usecols=["Image Index", "Finding Labels", "Patient ID"], index_col=None)
+                       usecols=["Image Index", "Finding Labels", "Patient ID"], index_col=None)
 
-    data = data[data["Finding Labels"].isin(LABELS)].reset_index()
+    # load test split
+    # with open(path_to_dir + "/" + "test_list.txt") as f:
+       # test_list = f.read().splitlines()
 
-    for label in LABELS:
+    # create column encoding if image contains class
+    for label in LABELS_USED:
         data[label] = data["Finding Labels"].map(
             lambda result: 1 if label in result else 0)
 
-    data['one_hot'] = data.apply(lambda target: [target[LABELS].values], 1).map(
+    # columns to one hot vector
+    data['one hot'] = data.apply(lambda target: [target[LABELS_USED].values], 1).map(
         lambda target: target[0])
 
-    target_vectors = np.stack(data['one_hot'].values)
-    data['target_vector'] = target_vectors.tolist()
+    # "no findings" not included in target
+    one_hot_vectors = np.vstack(data['one hot'].values)
+    data['target vector'] = one_hot_vectors[:, :-1].tolist()
 
-    # print(len(pd.unique(data['Patient ID'])))
+    # exclude images with no labels
+    counts_per_label = one_hot_vectors.sum(axis=0).astype(float)
+    counts_per_image = one_hot_vectors.sum(axis=1).astype(float)
+    label_idx = np.where(counts_per_image != 0)[0]
+    data = data.iloc[label_idx].reset_index(drop=True)
 
-    # data.to_pickle(path_to_dir + "/data.pkl")
+    # adjust number of "no finding" for less unbalanced data
+    one_hot_vectors = np.vstack(data['one hot'].values)
+    no_findings_idx = np.where(one_hot_vectors[:, -1] == 1)[0]
+    n_no_findings_new = int(np.median(counts_per_label[:-1]))
+    data = data.drop(no_findings_idx[n_no_findings_new:])
 
-    gs = GroupShuffleSplit(n_splits=1, test_size=.2, random_state=0)
-    train_idx, test_idx = next(gs.split(data['Image Index'], data['target_vector'], groups=data['Patient ID']))
+    # only keep entries with overlapping labels to chexpert
+    data = data[data["Finding Labels"].str.contains('|'.join(LABELS_USED))].reset_index(drop=True)
+
+    # only keep entries included in test set
+    # data = data[data["Image Index"].isin(test_list)].reset_index()
+
+    # encode one hot vectors as integers
+    class_values = np.argmax(np.stack(data['one hot'].values), axis=1)
+
+    sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0)
+    for train_i, test_i in sgkf.split(data['Image Index'], class_values, groups=data["Patient ID"]):
+        train_idx = train_i
+        test_idx = test_i
+        break
+
+    test_idx = np.random.permutation(test_idx)
+    val_idx = test_idx[: len(test_idx) // 2]
+    test_idx = test_idx[len(test_idx) // 2:]
 
     test_df = data.iloc[test_idx]
-    train_df = data.iloc[train_idx]
-
-    gs = GroupShuffleSplit(n_splits=1, test_size=.1, random_state=0)
-    train_idx, val_idx = next(gs.split(train_df['Image Index'], train_df['target_vector'], groups=train_df['Patient ID']))
     val_df = data.iloc[val_idx]
     train_df = data.iloc[train_idx]
 
     train_df.to_pickle(path_to_dir + "/train_data.pkl")
     val_df.to_pickle(path_to_dir + "/val_data.pkl")
     test_df.to_pickle(path_to_dir + "/test_data.pkl")
-
+    
 
 def preprocess_CheXpert(path_to_dir, crop_size):
     all_labels = ["No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity", "Lung Lesion",
-                    "Edema", "Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax", "Pleural Effusion",
-                    "Pleural Other", "Fracture", "Support Devices"]
+                  "Edema", "Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax", "Pleural Effusion",
+                  "Pleural Other", "Fracture", "Support Devices"]
 
     data_train = pd.read_csv(path_to_dir + "/" + "train.csv", usecols=["Path"] + all_labels, index_col=None)
     data_val = pd.read_csv(path_to_dir + "/" + "valid.csv", usecols=["Path"] + all_labels, index_col=None)
+
+    # fill nan with 0
     data = pd.concat([data_train, data_val]).fillna(0)
+
+    # remove file path from image name
     data = data.apply(lambda x: x.replace(
         {"CheXpert-v1.0-small/": ""}, regex=True
     ))
+
+    # adjust labels
     data = data.rename(columns={"Pleural Effusion": "Effusion"})
 
-    data = data[data.columns[data.columns.isin(["Path"] + LABELS)]]
-    data = data.replace([-1], 0)
-   
+    # only keep columns that are in LABELS_USED
+    data = data[data.columns[data.columns.isin(["Path"] + LABELS_USED)]]
 
+    # replace all unsure entries
+    data = data.replace([-1], 0)
+
+    # sort columns
     data = data[['Path', 'Atelectasis', 'Consolidation', 'Pneumothorax', 'Edema', 'Effusion',
                  'Pneumonia', 'Cardiomegaly', 'No Finding']]
 
-    data['one_hot'] = data.apply(lambda target: [target[LABELS].values.astype(int)], 1).map(
+    # encode labels as one hot vectors
+    data['one hot'] = data.apply(lambda target: [target[LABELS_USED].values.astype(int)], 1).map(
         lambda target: target[0])
 
-    data['num_labels'] = data.sum(axis=1, numeric_only=True)
-    data = data.loc[data['num_labels'] != 0]
-    data = data.drop("num_labels", axis=1)
+    # only keep images which have annotations
+    one_hot_vectors = np.vstack(data['one hot'].values)
+    counts_per_label = one_hot_vectors.sum(axis=0).astype(float)
+    counts_per_image = one_hot_vectors.sum(axis=1).astype(float)
+    label_idx = np.where(counts_per_image != 0)[0]
+    data = data.iloc[label_idx].reset_index(drop=True)
 
+    # assign patient ids
     data["Patient ID"] = [row.split("/")[1].split("patient")[-1] for row in data["Path"].values]
 
     data = data.reset_index(drop=True)
-    # print(len(pd.unique(data['Patient ID'])))
 
+    # delete "no finding" column -> zero vector
+    one_hot_vectors = np.vstack(data['one hot'].values)
+    one_hot_vectors = one_hot_vectors[:, :-1]
+    data['target vector'] = one_hot_vectors.tolist()
+
+    """
+    # resize dataset to similar size of NIH Chest Xray but keep class ratios
     label_percentage = np.stack(data['one_hot'].values).sum(axis=0).astype(float) / len(data)
     new_data = pd.DataFrame()
-    for label, p in zip(LABELS, label_percentage):
+    for label, p in zip(LABELS_USED, label_percentage):
         label_data = data[label]
         n_new = int(crop_size * p)
         print(p, n_new)
         indices = label_data.index.values[:n_new]
         new_data = new_data._append(data.iloc[indices])
-
+        
     data = new_data
-    print(len(data))
+    """
 
-    target_vectors = np.stack(data['one_hot'].values)
-    data['target_vector'] = target_vectors.tolist()
 
-    gs = GroupShuffleSplit(n_splits=1, test_size=.2, random_state=0)
-    train_idx, test_idx = next(gs.split(data['Path'], data['target_vector'], groups=data['Patient ID']))
+    # encode one hot vectors as integers
+    class_values = np.argmax(np.vstack(data['one hot'].values), axis=1)
+
+    sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0)
+    for train_i, test_i in sgkf.split(data['Path'], class_values, groups=data["Patient ID"]):
+        train_idx = train_i
+        test_idx = test_i
+        break
+
+    test_idx = np.random.permutation(test_idx)
+    val_idx = test_idx[: len(test_idx) // 2]
+    test_idx = test_idx[len(test_idx) // 2:]
+
     test_df = data.iloc[test_idx]
-    train_df = data.iloc[train_idx]
-
-    gs = GroupShuffleSplit(n_splits=1, test_size=.1, random_state=0)
-    train_idx, val_idx = next(gs.split(train_df['Path'], train_df['target_vector'], groups=train_df['Patient ID']))
     val_df = data.iloc[val_idx]
     train_df = data.iloc[train_idx]
 
@@ -108,7 +160,6 @@ def preprocess_CheXpert(path_to_dir, crop_size):
     test_df.to_pickle(path_to_dir + "/test_data.pkl")
 
 
-
 if __name__ == "__main__":
-    #preprocess_NIHChest(path_to_dir="E:\\NIH Chest Xray")
-    preprocess_CheXpert(path_to_dir="E:\\CheXpert", crop_size=112120)
+    # preprocess_NIHChest(path_to_dir="NIH Chest Xray")
+    preprocess_CheXpert(path_to_dir="CheXpert", crop_size=36083)
