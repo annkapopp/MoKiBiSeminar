@@ -44,29 +44,33 @@ class NIHChestXRayDataset(Dataset):
 
     def __getitem__(self, index):
         image_data = self.data.iloc[index]
-        path = os.path.join(self.path_to_dir, "images", image_data["Image Index"])
+        path = os.path.join(self.path_to_dir, image_data["Path"])
         image = torch.from_numpy(cv2.imread(path, cv2.IMREAD_GRAYSCALE)).unsqueeze(0)
 
         if self.mode == "train":
             # augmentation
-            image = augmentation(image)
+            image = augmentation(image).squeeze(0)
         else:
-            image = TF.resize(image, [224, 224], antialias=True)
+            image = TF.resize(image, [256, 256], antialias=True)
 
         image = normalise(image)
 
         image_name = os.path.basename(path)
-        one_hot = torch.from_numpy(np.asarray(self.data[self.data['Image Index'].str.contains(image_name)]
-                                              ['one hot'].values[0]).astype(int))
-        label = LABELS_USED[np.argmax(one_hot)]
+        target = torch.from_numpy(np.asarray(self.data[self.data['Path'].str.contains(image_name)]
+                                             ['target vector'].values[0]).astype(int))
+        label = LABELS_USED[np.argmax(target)]
 
-        return image, label, one_hot, image_name
+        return image, label, target, image_name
 
     def __len__(self):
         return len(self.data)
 
     def __label_counts__(self):
         label_counts = np.stack(self.data['one hot'].values).sum(axis=0).astype(float)
+        return torch.from_numpy(label_counts)
+
+    def __target_label_counts__(self):
+        label_counts = np.stack(self.data['target vector'].values).sum(axis=0).astype(float)
         return torch.from_numpy(label_counts)
 
 
@@ -83,22 +87,26 @@ class CheXpertDataset(Dataset):
 
         if self.mode == "train":
             # augmentation
-            image = augmentation(image)
+            image = augmentation(image).squeeze(0)
 
-        image = (image - torch.min(image)) / (torch.max(image) - torch.min(image))
+        image = normalise(image)
 
         image_name = os.path.basename(path)
-        one_hot = torch.from_numpy(np.asarray(self.data[self.data['Path'].str.contains(image_name)]
-                                              ['target_vector'].values[0]).astype(int))
-        label = LABELS_USED[np.argmax(one_hot)]
+        target_vector = torch.from_numpy(np.asarray(self.data[self.data['Path'].str.contains(image_name)]
+                                                    ['target vector'].values[0]).astype(int))
+        label = LABELS_USED[np.argmax(target_vector)]
 
-        return image, label, one_hot, image_name
+        return image, label, target_vector, image_name
 
     def __len__(self):
         return len(self.data)
 
     def __label_counts__(self):
-        label_counts = np.stack(self.data['one_hot'].values).sum(axis=0).astype(float)
+        label_counts = np.stack(self.data['one hot'].values).sum(axis=0).astype(float)
+        return torch.from_numpy(label_counts)
+
+    def __target_label_counts__(self):
+        label_counts = np.stack(self.data['target vector'].values).sum(axis=0).astype(float)
         return torch.from_numpy(label_counts)
 
 
@@ -110,7 +118,9 @@ if __name__ == "__main__":
     #dataset_test = NIHChestXRayDataset(path_to_dir="E:\\NIH Chest Xray", mode="test")
     #image = dataset_train.__getitem__(0)
 
-    print(dataset_train.__label_counts__(), dataset_train.__label_counts__() / dataset_train.__len__())
-    print(dataset_val.__label_counts__(), dataset_val.__label_counts__() / dataset_val.__len__())
-    print(dataset_test.__label_counts__(), dataset_test.__label_counts__() / dataset_test.__len__())
+    print(dataset_train.__len__() + dataset_val.__len__() + dataset_test.__len__())
+
+   # print(dataset_train.__label_counts__(), dataset_train.__label_counts__() / dataset_train.__len__())
+   # print(dataset_val.__label_counts__(), dataset_val.__label_counts__() / dataset_val.__len__())
+   # print(dataset_test.__label_counts__(), dataset_test.__label_counts__() / dataset_test.__len__())
 
