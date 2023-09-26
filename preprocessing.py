@@ -16,10 +16,6 @@ def preprocess_NIHChest(path_to_dir):
     data = pd.read_csv(path_to_dir + "/" + "Data_Entry_2017.csv",
                        usecols=["Image Index", "Finding Labels", "Patient ID"], index_col=None)
 
-    # load test split
-    # with open(path_to_dir + "/" + "test_list.txt") as f:
-       # test_list = f.read().splitlines()
-
     # create column encoding if image contains class
     for label in LABELS_USED:
         data[label] = data["Finding Labels"].map(
@@ -48,9 +44,6 @@ def preprocess_NIHChest(path_to_dir):
     # only keep entries with overlapping labels to chexpert
     data = data[data["Finding Labels"].str.contains('|'.join(LABELS_USED))].reset_index(drop=True)
 
-    # only keep entries included in test set
-    # data = data[data["Image Index"].isin(test_list)].reset_index()
-
     # encode one hot vectors as integers
     class_values = np.argmax(np.stack(data['one hot'].values), axis=1)
 
@@ -73,13 +66,15 @@ def preprocess_NIHChest(path_to_dir):
     test_df.to_pickle(path_to_dir + "/test_data.pkl")
     
 
-def preprocess_CheXpert(path_to_dir, crop_size):
+def preprocess_CheXpert(path_to_dir):
     all_labels = ["No Finding", "Enlarged Cardiomediastinum", "Cardiomegaly", "Lung Opacity", "Lung Lesion",
                   "Edema", "Consolidation", "Pneumonia", "Atelectasis", "Pneumothorax", "Pleural Effusion",
                   "Pleural Other", "Fracture", "Support Devices"]
 
-    data_train = pd.read_csv(path_to_dir + "/" + "train.csv", usecols=["Path"] + all_labels, index_col=None)
-    data_val = pd.read_csv(path_to_dir + "/" + "valid.csv", usecols=["Path"] + all_labels, index_col=None)
+    data_train = pd.read_csv(path_to_dir + "/" + "train.csv", usecols=["Path", "Frontal/Lateral"] + all_labels,
+                             index_col=None)
+    data_val = pd.read_csv(path_to_dir + "/" + "valid.csv", usecols=["Path", "Frontal/Lateral"] + all_labels,
+                           index_col=None)
 
     # fill nan with 0
     data = pd.concat([data_train, data_val]).fillna(0)
@@ -91,6 +86,9 @@ def preprocess_CheXpert(path_to_dir, crop_size):
 
     # adjust labels
     data = data.rename(columns={"Pleural Effusion": "Effusion"})
+
+    # only keep frontal view and remove lateral views
+    data = data[data["Frontal/Lateral"] == "Frontal"].reset_index()
 
     # only keep columns that are in LABELS_USED
     data = data[data.columns[data.columns.isin(["Path"] + LABELS_USED)]]
@@ -123,21 +121,6 @@ def preprocess_CheXpert(path_to_dir, crop_size):
     one_hot_vectors = one_hot_vectors[:, :-1]
     data['target vector'] = one_hot_vectors.tolist()
 
-    """
-    # resize dataset to similar size of NIH Chest Xray but keep class ratios
-    label_percentage = np.stack(data['one_hot'].values).sum(axis=0).astype(float) / len(data)
-    new_data = pd.DataFrame()
-    for label, p in zip(LABELS_USED, label_percentage):
-        label_data = data[label]
-        n_new = int(crop_size * p)
-        print(p, n_new)
-        indices = label_data.index.values[:n_new]
-        new_data = new_data._append(data.iloc[indices])
-        
-    data = new_data
-    """
-
-
     # encode one hot vectors as integers
     class_values = np.argmax(np.vstack(data['one hot'].values), axis=1)
 
@@ -162,4 +145,4 @@ def preprocess_CheXpert(path_to_dir, crop_size):
 
 if __name__ == "__main__":
     # preprocess_NIHChest(path_to_dir="NIH Chest Xray")
-    preprocess_CheXpert(path_to_dir="CheXpert", crop_size=36083)
+    preprocess_CheXpert(path_to_dir="CheXpert")

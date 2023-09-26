@@ -1,5 +1,3 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 from torch import nn, optim
 import numpy as np
@@ -13,7 +11,7 @@ import dataset
 from evaluation import accuracy_score
 import utils
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 def train(model, model_name, num_epochs, train_dataloader, val_dataloader, criterion, optimizer, scheduler):
     log = {
@@ -58,7 +56,6 @@ def train(model, model_name, num_epochs, train_dataloader, val_dataloader, crite
         log["accuracy_train"].append(running_accuracy)
 
         # output
-        #if epoch % 5 == 0:
         tqdm.write('Epoch {} (train) -- loss: {:.4f} acc: {:.4f}'.format(epoch, running_loss, running_accuracy))
 
 
@@ -75,10 +72,8 @@ def train(model, model_name, num_epochs, train_dataloader, val_dataloader, crite
                 output = model(input)
 
                 class_prediction = utils.get_class_prediction(output)
-                #output, class_prediction = utils.constrain_prediction(output, class_prediction)
 
                 loss = criterion(output, target.float())
-
                 running_loss += loss.item()
 
                 mean_accuracy, _ = accuracy_score(target, output, class_counts=train_dataloader.dataset
@@ -107,7 +102,7 @@ def train(model, model_name, num_epochs, train_dataloader, val_dataloader, crite
 
 
 if __name__ == "__main__":
-    print("device: ", DEVICE, ", gpu no.:", os.environ["CUDA_VISIBLE_DEVICES"])
+    print("device: ", DEVICE)
 
     # dataset_train = dataset.NIHChestXRayDataset("NIH Chest Xray", mode="train")
     # dataset_val = dataset.NIHChestXRayDataset("NIH Chest Xray", mode="val")
@@ -121,13 +116,11 @@ if __name__ == "__main__":
     weights = np.sqrt(1 / label_counts)
     weights /= weights.mean()
 
-    # model = ResNet18(pretrained=False).to(DEVICE)
     model = DenseNet121(pretrained=True).to(DEVICE)
     lr = 0.00001
     criterion = nn.BCELoss(weight=weights.to(DEVICE, dtype=torch.float))
-    # criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
-    train(model, "chexpert_densenet_pretrained", 10, dataloader_train, dataloader_val,
+    train(model, "chex_densenet", 10, dataloader_train, dataloader_val,
           criterion, optimizer, scheduler)

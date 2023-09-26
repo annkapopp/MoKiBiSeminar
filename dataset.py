@@ -31,8 +31,7 @@ def augmentation(image):
 
 
 def normalise(image):
-    # return ((image - torch.min(image)) / (torch.max(image) - torch.min(image)) * 2024) - 1024
-    return ((image - 0) / (255 - 0) * 2024) - 1024
+    return ((image - torch.min(image)) / (torch.max(image) - torch.min(image)) * 2) - 1
 
 
 class NIHChestXRayDataset(Dataset):
@@ -44,7 +43,7 @@ class NIHChestXRayDataset(Dataset):
 
     def __getitem__(self, index):
         image_data = self.data.iloc[index]
-        path = os.path.join(self.path_to_dir, image_data["Path"])
+        path = os.path.join(self.path_to_dir, "images", image_data["Image Index"])
         image = torch.from_numpy(cv2.imread(path, cv2.IMREAD_GRAYSCALE)).unsqueeze(0)
 
         if self.mode == "train":
@@ -56,7 +55,7 @@ class NIHChestXRayDataset(Dataset):
         image = normalise(image)
 
         image_name = os.path.basename(path)
-        target = torch.from_numpy(np.asarray(self.data[self.data['Path'].str.contains(image_name)]
+        target = torch.from_numpy(np.asarray(self.data[self.data['Image Index'].str.contains(image_name)]
                                              ['target vector'].values[0]).astype(int))
         label = LABELS_USED[np.argmax(target)]
 
@@ -88,10 +87,13 @@ class CheXpertDataset(Dataset):
         if self.mode == "train":
             # augmentation
             image = augmentation(image).squeeze(0)
+        else:
+            image = TF.resize(image, [256, 256], antialias=True)
 
         image = normalise(image)
 
-        image_name = os.path.basename(path)
+
+        image_name = self.data.iloc[index]["Path"]
         target_vector = torch.from_numpy(np.asarray(self.data[self.data['Path'].str.contains(image_name)]
                                                     ['target vector'].values[0]).astype(int))
         label = LABELS_USED[np.argmax(target_vector)]
@@ -112,15 +114,21 @@ class CheXpertDataset(Dataset):
 
 
 if __name__ == "__main__":
-    dataset_train = NIHChestXRayDataset(path_to_dir="NIH Chest Xray", mode="train")
-    dataset_val= NIHChestXRayDataset(path_to_dir="NIH Chest Xray", mode="val")
-    dataset_test = NIHChestXRayDataset(path_to_dir="NIH Chest Xray", mode="test")
-    #dataset_test = NIHChestXRayDataset(path_to_dir="E:\\NIH Chest Xray", mode="test")
-    #image = dataset_train.__getitem__(0)
+    #dataset_train = NIHChestXRayDataset(path_to_dir="NIH Chest Xray", mode="train")
+    #dataset_val= NIHChestXRayDataset(path_to_dir="NIH Chest Xray", mode="val")
+    #dataset_test = NIHChestXRayDataset(path_to_dir="NIH Chest Xray", mode="test")
 
-    print(dataset_train.__len__() + dataset_val.__len__() + dataset_test.__len__())
+    dataset_train = CheXpertDataset(path_to_dir="CheXpert", mode="train")
+    dataset_val= CheXpertDataset(path_to_dir="CheXpert", mode="val")
+    dataset_test = CheXpertDataset(path_to_dir="CheXpert", mode="test")
 
-   # print(dataset_train.__label_counts__(), dataset_train.__label_counts__() / dataset_train.__len__())
-   # print(dataset_val.__label_counts__(), dataset_val.__label_counts__() / dataset_val.__len__())
-   # print(dataset_test.__label_counts__(), dataset_test.__label_counts__() / dataset_test.__len__())
+    print("Number of images: ", dataset_train.__len__() + dataset_val.__len__() + dataset_test.__len__())
+    print("Number of patients: ", len(np.unique(np.vstack(dataset_train.data["Patient ID"].tolist() + dataset_val.data["Patient ID"].tolist()  +
+                    dataset_test.data["Patient ID"].tolist()))))
+
+    # Number of images per class and percentage
+    print(dataset_train.__label_counts__(), dataset_train.__label_counts__() / dataset_train.__len__())
+    print(dataset_val.__label_counts__(), dataset_val.__label_counts__() / dataset_val.__len__())
+    print(dataset_test.__label_counts__(), dataset_test.__label_counts__() / dataset_test.__len__())
+
 
